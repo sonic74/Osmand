@@ -318,11 +318,18 @@ public class SettingsNavigationActivity extends SettingsBaseActivity {
 				if (avoidParameters.size() > 0) {
 					avoidRouting = new Preference(this);
 					avoidRouting.setTitle(R.string.avoid_in_routing_title);
-					if (selectedAppMode.isDerivedRoutingFrom(ApplicationMode.PUBLIC_TRANSPORT)) {
-						avoidRouting.setSummary(R.string.avoid_in_routing_descr_public_transport);
-					} else {
-						avoidRouting.setSummary(R.string.avoid_in_routing_descr);
-					}
+					String avoid = getString(R.string.avoid_in_routing_title).replace("...", "").replace("…","");
+					StringBuilder avoidSummary = new StringBuilder().append(avoid);
+					for (int i = 0; i < avoidParameters.size(); i++) {
+						avoidSummary.append(avoidParameters.get(i).getName().replace(avoid, ""));
+						if (i < 2) {
+							avoidSummary.append(",");
+						} else {
+							avoidSummary.append("...");
+							break;
+						}
+					} 
+					avoidRouting.setSummary(avoidSummary.toString());
 					avoidRouting.setOnPreferenceClickListener(this);
 					cat.addPreference(avoidRouting);
 				}
