@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+	<remove-project name="osmandapp/Osmand.git" />
+	<project path="android" name="sonic74/Osmand.git" revision="r3.4"/>
+</manifest>
+
