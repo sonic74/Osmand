@@ -33,6 +33,14 @@ public class QuadRect {
 				&& this.bottom >= bottom;
 	}
 
+	public boolean contains(double x, double y) {
+		double l=Math.min(left,right);
+		double r=Math.max(left,right);
+		double t=Math.min(top,bottom);
+		double b=Math.max(top,bottom);
+		return l <= x && t <= y && r >= x && b >= y;
+	}
+
 	public boolean contains(QuadRect box) {
 		return contains(box.left, box.top, box.right, box.bottom);
 	}

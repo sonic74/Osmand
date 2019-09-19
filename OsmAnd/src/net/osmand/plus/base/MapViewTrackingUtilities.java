@@ -3,6 +3,7 @@ package net.osmand.plus.base;
 import android.content.Context;
 import android.os.AsyncTask;
 import android.support.v4.util.Pair;
+import android.util.Log;
 import android.view.WindowManager;
 
 import net.osmand.Location;
@@ -10,6 +11,7 @@ import net.osmand.StateChangedListener;
 import net.osmand.ValueHolder;
 import net.osmand.binary.BinaryMapDataObject;
 import net.osmand.data.LatLon;
+import net.osmand.data.QuadRect;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.map.IMapLocationListener;
 import net.osmand.map.WorldRegion;
@@ -162,6 +164,8 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 		new DetectDrivingRegionTask(app).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, latLon);
 	}
 
+	/*double oldLong=Double.NaN, oldLat=Double.NaN;
+	boolean firstRun=true;*/
 	@Override
 	public void updateLocation(Location location) {
 		myLocation = location;
@@ -175,48 +179,72 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 		}
 		if (mapView != null) {
 			RotatedTileBox tb = mapView.getCurrentRotatedTileBox().copy();
-			if (isMapLinkedToLocation() && location != null) {
-				Pair<Integer, Double> zoom = null;
-				Float rotation = null;
-				if (settings.AUTO_ZOOM_MAP.get()) {
-					zoom = autozoom(tb, location);
+			if (location != null) {
+				/*if (Double.isNaN(oldLong)) oldLong=location.getLongitude();
+				if (Double.isNaN(oldLat)) oldLat=location.getLatitude();*/
+				QuadRect qr = tb.getLatLonBounds();
+				Log.i(this.getClass().getSimpleName(), "qr=" + qr + " ("+qr.width()+" x "+qr.height()+")");
+				boolean isEdging = false;
+				double BORDER = 15.0 / 100.0;
+				if(!Double.isNaN(qr.width())) {
+					qr.inset(qr.width() * BORDER, qr.height() * BORDER);
+					isEdging = !qr.contains(location.getLongitude(), location.getLatitude());
+					Log.i(this.getClass().getSimpleName(), "qr=" + qr + "  location=" + location + "  isEdging=" + isEdging);
 				}
-				int currentMapRotation = settings.ROTATE_MAP.get();
-				float speedForDirectionOfMovement = settings.SWITCH_MAP_DIRECTION_TO_COMPASS.get()/3.6f;
-				boolean smallSpeedForDirectionOfMovement = speedForDirectionOfMovement != 0
-						&& isSmallSpeedForDirectionOfMovement(location, speedForDirectionOfMovement);
-				boolean smallSpeedForCompass = isSmallSpeedForCompass(location);
-				boolean smallSpeedForAnimation = isSmallSpeedForAnimation(location);
-				// boolean virtualBearing = fMode && settings.SNAP_TO_ROAD.get();
-				showViewAngle = (!location.hasBearing() || smallSpeedForCompass) && (tb != null &&
-						tb.containsLatLon(location.getLatitude(), location.getLongitude()));
-				if (currentMapRotation == OsmandSettings.ROTATE_MAP_BEARING) {
-					if (smallSpeedForDirectionOfMovement) {
-						showViewAngle = routePlanningMode;
-					} else if (location.hasBearing() && !smallSpeedForCompass) {
-						// special case when bearing equals to zero (we don't change anything)
-						if (location.getBearing() != 0f) {
-							rotation = -location.getBearing();
+				if (isMapLinkedToLocation() || isEdging) {
+					Pair<Integer, Double> zoom = null;
+					Float rotation = null;
+					if (settings.AUTO_ZOOM_MAP.get()) {
+						zoom = autozoom(tb, location);
+					}
+					int currentMapRotation = settings.ROTATE_MAP.get();
+					float speedForDirectionOfMovement = settings.SWITCH_MAP_DIRECTION_TO_COMPASS.get() / 3.6f;
+					boolean smallSpeedForDirectionOfMovement = speedForDirectionOfMovement != 0
+							&& isSmallSpeedForDirectionOfMovement(location, speedForDirectionOfMovement);
+					boolean smallSpeedForCompass = isSmallSpeedForCompass(location);
+					boolean smallSpeedForAnimation = isSmallSpeedForAnimation(location);
+					// boolean virtualBearing = fMode && settings.SNAP_TO_ROAD.get();
+					showViewAngle = (!location.hasBearing() || smallSpeedForCompass) && (tb != null &&
+							tb.containsLatLon(location.getLatitude(), location.getLongitude()));
+					if (currentMapRotation == OsmandSettings.ROTATE_MAP_BEARING) {
+						if (smallSpeedForDirectionOfMovement) {
+							showViewAngle = routePlanningMode;
+						} else if (location.hasBearing() && !smallSpeedForCompass) {
+							// special case when bearing equals to zero (we don't change anything)
+							if (location.getBearing() != 0f) {
+								rotation = -location.getBearing();
+							}
 						}
+					} else if (currentMapRotation == OsmandSettings.ROTATE_MAP_COMPASS) {
+						showViewAngle = routePlanningMode; // disable compass rotation in that mode
 					}
-				} else if(currentMapRotation == OsmandSettings.ROTATE_MAP_COMPASS) {
-					showViewAngle = routePlanningMode; // disable compass rotation in that mode
+					registerUnregisterSensor(location, smallSpeedForDirectionOfMovement);
+					if (settings.ANIMATE_MY_LOCATION.get() && !smallSpeedForAnimation && !movingToMyLocation &&
+							settings.TURN_SCREEN_ON_TIME_INT.get() == 0) {
+						mapView.getAnimatedDraggingThread().startMoving(
+								location.getLatitude(), location.getLongitude(), zoom, rotation, false);
+					} else {
+						if (zoom != null && zoom.first != null && zoom.second != null) {
+							mapView.getAnimatedDraggingThread().startZooming(zoom.first, zoom.second, false);
+						}
+						if (rotation != null) {
+							mapView.setRotate(rotation);
+						}
+						mapView.setLatLon(location.getLatitude(), location.getLongitude());
+						/*double longOffset=0;
+						double latOffset=0;
+						if(!isMapLinkedToLocation() && isEdging) {
+							double f=(1.0-BORDER)/(firstRun?1.0:2.0); // hysteresis
+							firstRun=false;
+							longOffset=(location.getLongitude()-oldLong)*f;
+							latOffset=(location.getLatitude()-oldLat)*f;
+							Log.i(this.getClass().getSimpleName(), "longOffset=" + longOffset+"; latOffset="+latOffset+"; f="+f);
+							oldLong=location.getLongitude();
+							oldLat=location.getLatitude();
+						}
+						mapView.setLatLon(location.getLatitude()+latOffset, location.getLongitude()+longOffset);*/
+					}
 				}
-				registerUnregisterSensor(location, smallSpeedForDirectionOfMovement);
-				if (settings.ANIMATE_MY_LOCATION.get() && !smallSpeedForAnimation && !movingToMyLocation &&
-						settings.TURN_SCREEN_ON_TIME_INT.get() == 0) {
-					mapView.getAnimatedDraggingThread().startMoving(
-							location.getLatitude(), location.getLongitude(), zoom, rotation, false);
-				} else {
-					if (zoom != null && zoom.first != null && zoom.second != null) {
-						mapView.getAnimatedDraggingThread().startZooming(zoom.first, zoom.second, false);
-					}
-					if (rotation != null) {
-						mapView.setRotate(rotation);
-					}
-					mapView.setLatLon(location.getLatitude(), location.getLongitude());
-				}
-			} else if (location != null) {
 				showViewAngle = (!location.hasBearing() || isSmallSpeedForCompass(location)) && (tb != null &&
 						tb.containsLatLon(location.getLatitude(), location.getLongitude()));
 				registerUnregisterSensor(location, false);

@@ -602,6 +602,8 @@ public class OsmandMapTileView implements IMapDownloaderCallback {
 		}
 		long end = SystemClock.elapsedRealtime();
 		additional.calculateFPS(start, end);
+		android.util.Log.i(this.getClass().getSimpleName(), "refreshBaseMapInternal() took "+(end-start));
+		view.postInvalidate();
 	}
 
 	private void refreshMapInternal(DrawSettings drawSettings) {
